@@ -334,36 +334,44 @@ DIGITS = {
 GLYPH_TOP = 4          # where the font's cap height starts when drawn at y=0 (size 11)
 
 
-def _runs(s):
-    run = ""
-    for ch in s:
-        if ch in DIGITS:
-            if run: yield run; run = ""
-            yield ch
+_GLYPHS = {}
+SPACE_W, GAP = 3, 1
+
+
+def glyph(ch, size=11):
+    """Bitmap for one character: the font rendered with no smoothing, trimmed to its
+    exact ink width (digits use the hand-drawn set). Returns (width, [(x, y), ...])."""
+    if ch in _GLYPHS: return _GLYPHS[ch]
+    if ch in DIGITS:
+        rows = DIGITS[ch]
+        g = (len(rows[0]), [(x, GLYPH_TOP + y) for y, r in enumerate(rows) for x, c in enumerate(r) if c == "#"])
+    elif ch == " ":
+        g = (SPACE_W, [])
+    else:
+        im = Image.new("1", (24, 20), 0); d = ImageDraw.Draw(im); d.fontmode = "1"
+        d.text((4, 0), ch, font=ImageFont.truetype(FONT, size), fill=1)
+        bb = im.getbbox()
+        if not bb: g = (SPACE_W, [])
         else:
-            run += ch
-    if run: yield run
+            x0, x1 = bb[0], bb[2]
+            g = (x1 - x0, [(x - x0, y) for y in range(20) for x in range(x0, x1) if im.getpixel((x, y))])
+    _GLYPHS[ch] = g
+    return g
 
 
 def text_width(s, size=11):
-    f = ImageFont.truetype(FONT, size); d = ImageDraw.Draw(Image.new("RGBA", (1, 1))); w = 0
-    for r in _runs(s):
-        w += (len(DIGITS[r][0]) + 1) if r in DIGITS else d.textlength(r, font=f)
-    return w
+    return sum(glyph(ch)[0] for ch in s) + GAP * max(0, len(s) - 1)
 
 
 def draw_text(img, x, y, s, fill, size=11):
-    """Font for letters, hand-drawn bitmaps for digits and the degree sign."""
-    f = ImageFont.truetype(FONT, size); d = ImageDraw.Draw(img); d.fontmode = "1"; px = img.load()
-    for r in _runs(s):
-        if r in DIGITS:
-            for gy, row in enumerate(DIGITS[r]):
-                for gx, ch in enumerate(row):
-                    X, Y = round(x) + gx, y + GLYPH_TOP + gy
-                    if ch == "#" and 0 <= X < img.width and 0 <= Y < img.height: px[X, Y] = fill
-            x += len(DIGITS[r][0]) + 1
-        else:
-            d.text((round(x), y), r, font=f, fill=fill); x += d.textlength(r, font=f)
+    """True bitmap text: whole-pixel glyph widths and an even 1 px gap between letters."""
+    px = img.load(); x = round(x)
+    for ch in s:
+        w, pts = glyph(ch)
+        for gx, gy in pts:
+            X, Y = x + gx, y + gy
+            if 0 <= X < img.width and 0 <= Y < img.height: px[X, Y] = fill
+        x += w + GAP
 
 
 def ui_layer(pal, status, message):
