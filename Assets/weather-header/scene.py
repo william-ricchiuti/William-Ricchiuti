@@ -316,8 +316,54 @@ def streetcar(pal):
     return s.im
 
 
+
+# Hand-drawn 5x7 digits (the font's 5 reads as an S and its 7 as a 1 at this size).
+DIGITS = {
+    "0": [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
+    "1": ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
+    "2": [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+    "3": ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
+    "4": ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+    "5": ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
+    "6": ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
+    "7": ["#####", "....#", "...#.", "..#..", "..#..", "..#..", "..#.."],
+    "8": [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
+    "9": [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
+    "°": [".#.", "#.#", ".#."],
+}
+GLYPH_TOP = 4          # where the font's cap height starts when drawn at y=0 (size 11)
+
+
+def _runs(s):
+    run = ""
+    for ch in s:
+        if ch in DIGITS:
+            if run: yield run; run = ""
+            yield ch
+        else:
+            run += ch
+    if run: yield run
+
+
 def text_width(s, size=11):
-    return ImageDraw.Draw(Image.new("RGBA", (1, 1))).textlength(s, font=ImageFont.truetype(FONT, size))
+    f = ImageFont.truetype(FONT, size); d = ImageDraw.Draw(Image.new("RGBA", (1, 1))); w = 0
+    for r in _runs(s):
+        w += (len(DIGITS[r][0]) + 1) if r in DIGITS else d.textlength(r, font=f)
+    return w
+
+
+def draw_text(img, x, y, s, fill, size=11):
+    """Font for letters, hand-drawn bitmaps for digits and the degree sign."""
+    f = ImageFont.truetype(FONT, size); d = ImageDraw.Draw(img); d.fontmode = "1"; px = img.load()
+    for r in _runs(s):
+        if r in DIGITS:
+            for gy, row in enumerate(DIGITS[r]):
+                for gx, ch in enumerate(row):
+                    X, Y = round(x) + gx, y + GLYPH_TOP + gy
+                    if ch == "#" and 0 <= X < img.width and 0 <= Y < img.height: px[X, Y] = fill
+            x += len(DIGITS[r][0]) + 1
+        else:
+            d.text((round(x), y), r, font=f, fill=fill); x += d.textlength(r, font=f)
 
 
 def ui_layer(pal, status, message):
@@ -331,10 +377,10 @@ def ui_layer(pal, status, message):
     c.vline(x0, y0, y1, "boxEdge"); c.vline(x1, y0, y1, "boxEdge")
     c.hline(x0 + 1, x1 - 1, y0 + 1, "boxHi"); c.vline(x0 + 1, y0 + 1, y1 - 1, "boxHi")
     c.hline(x0 + 1, x1 - 1, y1 - 1, "boxSh"); c.vline(x1 - 1, y0 + 1, y1 - 1, "boxSh")
-    d = ImageDraw.Draw(c.im); d.fontmode = "1"; ink = (*vga(UI["barTx"]), 255)
-    d.text((3, -1), status[0], font=f, fill=ink)
-    d.text((W - 3 - text_width(status[1]), -1), status[1], font=f, fill=ink)
-    for i, l in enumerate(message): d.text((x0 + 5, y0 + 1 + 9 * i), l, font=f, fill=ink)
+    ink = (*vga(UI["barTx"]), 255)
+    draw_text(c.im, 3, -1, status[0], ink)
+    draw_text(c.im, W - 3 - text_width(status[1]), -1, status[1], ink)
+    for i, l in enumerate(message): draw_text(c.im, x0 + 5, y0 + 1 + 9 * i, l, ink)
     return c.im
 
 
