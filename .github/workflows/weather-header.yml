@@ -1,0 +1,45 @@
+name: Weather header
+
+on:
+  schedule:
+    - cron: "7 * * * *"   # every hour at :07 (GitHub may run it a few minutes late)
+  workflow_dispatch:       # "Run workflow" button for a manual refresh
+  push:
+    branches: [main]
+    paths:
+      - "Assets/weather-header/**"
+      - ".github/workflows/weather-header.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weather-header
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Render header for current New Orleans weather
+        run: python3 Assets/weather-header/update_header.py --out header.svg
+
+      - name: Publish to the output branch
+        # The image lives on its own branch so hourly updates never clutter main.
+        if: hashFiles('header.svg') != ''
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir publish && mv header.svg publish/
+          cd publish
+          git init -q -b output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add header.svg
+          git commit -q -m "Weather header $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" output
