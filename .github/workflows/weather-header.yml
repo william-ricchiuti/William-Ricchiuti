@@ -25,21 +25,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Render header for current New Orleans weather
-        run: python3 Assets/weather-header/update_header.py --out header.svg
+      - name: Install Pillow (draws the pixels)
+        run: python3 -m pip install --quiet pillow
+
+      - name: Paint header for current New Orleans weather
+        run: python3 Assets/weather-header/update_header.py --out header.gif
 
       - name: Publish to the output branch
         # The image lives on its own branch so hourly updates never clutter main.
-        if: hashFiles('header.svg') != ''
+        if: hashFiles('header.gif') != ''
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          mkdir publish && mv header.svg publish/
+          mkdir publish && mv header.gif publish/
           cd publish
           git init -q -b output
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add header.svg
+          git add header.gif
           git commit -q -m "Weather header $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" output
