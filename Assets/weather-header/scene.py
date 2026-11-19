@@ -131,7 +131,11 @@ CLOUDS = {
 }
 MOON_XY, SUN_XY = (170, 24), (168, 26)
 BOX_RECT = (6, 14, 126, 37)      # narrator box area: keep stars and sun out of it
-REFLECT_X = [44, 50, 66, 72, 88, 94, 108, 119, 132, 145, 213, 228, 243]
+# Column ranges of the lights at street level: shotgun door lights + front windows,
+# cathedral doors, townhouse ground windows (226 stays dark). The gas lamp is handled separately.
+LIGHTS = [(44, 45), (51, 55), (66, 67), (73, 77), (88, 89), (95, 99),
+          (118, 121), (130, 134), (143, 146), (211, 216), (241, 246)]
+LAMP_X = 108
 
 
 def sky(c, kind):
@@ -399,6 +403,35 @@ def palette_for(cond):
     return HOT if cond.get("hot") else DAY
 
 
+
+def light_spill(c):
+    """Dry night: warm light falling on the sidewalk under each lit window, plus a pool under the lamp."""
+    for x0, x1 in LIGHTS:
+        for x in range(x0 - 1, x1 + 2):
+            edge = x in (x0 - 1, x1 + 1)
+            c.p(x, GROUND, "glow0" if edge else "glow1")
+            if not edge:
+                c.p(x, GROUND + 1, "glow0")
+                if BAYER[(GROUND + 3) % 4][x % 4] < 6: c.p(x, GROUND + 3, "glow0")
+    for y in range(GROUND, GROUND + 8):
+        if y in (GROUND + 2, 89, 92): continue                   # leave the curb and rails alone
+        for x in range(LAMP_X - 9, LAMP_X + 10):
+            d = math.hypot(x - LAMP_X, (y - GROUND) * 1.8)
+            if d < 9 and BAYER[y % 4][x % 4] < (9 - d) * 1.7:
+                c.p(x, y, "glow1" if d < 4 else "glow0")
+
+
+def wet_reflections(c, t, night):
+    """Rain/fog: each light mirrored straight down on the wet street, as rippling horizontal dashes
+    that narrow with distance. By day, only every other window, and no lamp."""
+    srcs = LIGHTS + [(LAMP_X - 1, LAMP_X + 1)] if night else LIGHTS[::2]
+    for i, (x0, x1) in enumerate(srcs):
+        ln = 9 + (i % 3)
+        for k, y in enumerate(range(GROUND + 4, GROUND + 4 + ln)):
+            if y in (89, 92) or (k + t // 3 + i) % 3 == 2: continue  # skip the rails; ripple gaps
+            shift, shrink = ((k + t // 2 + i) % 3) - 1, k // 4
+            c.hline(x0 + shift + shrink, x1 + shift - shrink, y, "refl1" if k < ln // 2 else "refl0")
+
 def render(cond, status, message):
     """cond: tod 'day'|'night', sky 'clear'|'partly'|'cloudy'|'rain'|'fog', moon 0..1, hot bool."""
     night, kind = cond["tod"] == "night", cond["sky"]
@@ -417,7 +450,7 @@ def render(cond, status, message):
     star_list = stars() if night and kind in ("clear", "partly") else []
     rnd = random.Random(11)
     drops = [(rnd.randint(0, W + 30), rnd.randint(BAR, BAR + 5), rnd.randint(0, 14)) for _ in range(70)] if kind == "rain" else []
-    wet = kind in ("rain", "fog") or night
+    wet = kind in ("rain", "fog")
 
     frames = []
     for t in range(FRAMES):
@@ -427,12 +460,8 @@ def render(cond, status, message):
         if night:                                                # Superdome lights + lamp flicker
             for x in range(157, 200): c.p(x, 67, ["led0", "led1", "led2"][(x + t) % 3])
             c.rect(107, 59, 109, 62, "glass" if t % 6 else "win")
-        if wet:                                                  # reflections on the wet street
-            for i, rx in enumerate(REFLECT_X if night else REFLECT_X[::2]):
-                ln = 7 + (i % 3) * 2
-                for k, y in enumerate(range(GROUND + 4, GROUND + 4 + ln)):
-                    if (k + t // 2 + i) % 2 == 0 and y not in (89, 92):
-                        c.p(rx + ((k // 2 + t // 3 + i) % 3 == 0), y, "refl1" if k < ln // 2 else "refl0")
+        if wet: wet_reflections(c, t, night)                     # lights mirrored on the wet street
+        elif night: light_spill(c)                               # dry night: light pooling on the sidewalk
         cx = -40 + (t * 2) % (W + 40)                            # streetcar sprite, 2 px per frame
         c.im.alpha_composite(car, (max(cx, 0), 66), (max(0, -cx), 0))
         if fog is not None:                                      # fog bank breathes: shifts 2 px every 25 frames
