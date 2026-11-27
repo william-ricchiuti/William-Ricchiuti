@@ -304,6 +304,11 @@ def fog_layer(pal):
     return f.im
 
 
+# The rails are rows 89 (far) and 92 (near). At this height the wheels (sprite rows 21-22) sit on the near
+# rail and the body hides the far one, so the car rides the track instead of floating above it.
+CAR_Y = 69
+
+
 def streetcar(pal):
     s = Canvas(pal, 40, 26); oy = 7
     s.line(10, oy, 3, 0, "tire")
@@ -529,7 +534,7 @@ def render(cond, status, message):
         if wet: wet_reflections(c, t, night)                     # lights mirrored on the wet street
         elif night: light_spill(c)                               # dry night: light pooling on the sidewalk
         cx = -40 + (t * 2) % (W + 40)                            # streetcar sprite, 2 px per frame
-        c.im.alpha_composite(car, (max(cx, 0), 66), (max(0, -cx), 0))
+        c.im.alpha_composite(car, (max(cx, 0), CAR_Y), (max(0, -cx), 0))
         if fog is not None:                                      # fog bank breathes: shifts 2 px every 25 frames
             c.im.alpha_composite(fog.transform(fog.size, Image.AFFINE, (1, 0, -((t // 25) % 2) * 2, 0, 1, 0)))
         for x0, y0, ph in drops:
